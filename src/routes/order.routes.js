@@ -3,13 +3,13 @@ import { createOrder, handleWebhook, trackOrder } from '../controllers/order.con
 
 const router = express.Router();
 
-// POST: http://localhost:5000/api/orders/create
+// POST: https://stephen-online-store-app-backend.onrender.com/api/orders/create
 router.post('/create', createOrder);
 
-// POST: http://localhost:5000/api/orders/webhook (Point Paystack here via Ngrok)
+// POST: https://stephen-online-store-app-backend.onrender.com/api/orders/webhook (Point Paystack here via Ngrok)
 router.post('/webhook', handleWebhook);
 
-// GET: http://localhost:5000/api/orders/track/:trackingId
+// GET: https://stephen-online-store-app-backend.onrender.com/api/orders/track/:trackingId
 router.get('/track/:trackingId', trackOrder);
 
 export default router;
