@@ -37,10 +37,8 @@ async function setup() {
       await db.execute(statement);
     }
     console.log("✅ Tables created successfully in Turso!");
-    process.exit(0);
   } catch (err) {
     console.error("❌ Error initializing database:", err);
-    process.exit(1);
   }
 }
 
