@@ -21,7 +21,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 
-app.get('/', (res) => {
+app.get('/', (req, res) => {
   res.send('🚀 Stephen Online Store API is running smoothly!');
 });
 
