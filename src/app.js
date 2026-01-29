@@ -25,8 +25,5 @@ app.get('/', (req, res) => {
   res.send('🚀 Stephen Online Store API is running smoothly!');
 });
 
-<<<<<<< HEAD
 export default app;
-=======
-export default app;
->>>>>>> af8a4a0fe2e930bb14e2aa2762bd947d41da490b
+
