@@ -26,3 +26,7 @@ app.get('/', (req, res) => {
 });
 
 export default app;
+<<<<<<< HEAD
+=======
+
+>>>>>>> e9b962823ed7c8f1f8a0c7b5e071c8adf70cdd93
