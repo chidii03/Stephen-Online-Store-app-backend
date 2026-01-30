@@ -15,19 +15,21 @@ export const subscribe = async (req, res) => {
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
-    const stmt = db.prepare("INSERT INTO subscribers (email) VALUES (?)");
-    stmt.run(email);
+    await db.execute({
+      sql: "INSERT INTO subscribers (email) VALUES (?)",
+      args: [email]
+    });
     
     await sendProfessionalEmail(email, 'welcome');
     res.json({ success: true, message: "Welcome email sent!" });
   } catch (error) {
-    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    // Turso/LibSQL error check
+    if (error.message?.includes('UNIQUE')) {
       return res.status(400).json({ error: "You are already subscribed!" });
     }
     res.status(500).json({ error: "Server error" });
   }
 };
-
 // 2. Professional Template Switcher
 const sendProfessionalEmail = async (email, type) => {
   const templates = {
@@ -95,14 +97,21 @@ const sendProfessionalEmail = async (email, type) => {
 // 3. REAL Weekly Cron Job (Runs every Monday at 9:00 AM)
 cron.schedule('0 9 * * 1', async () => {
   logger.info("Running Weekly Newsletter Cron...");
-  const subscribers = db.prepare("SELECT email FROM subscribers").all();
   
-  for (const sub of subscribers) {
-    try {
-      await sendProfessionalEmail(sub.email, 'weekly');
-      logger.info(`Weekly email sent to ${sub.email}`);
-    } catch (err) {
-      logger.error(`Failed weekly email to ${sub.email}`, err);
+  try {
+    // FIX: Use await db.execute instead of db.prepare().all()
+    const result = await db.execute("SELECT email FROM subscribers");
+    const subscribers = result.rows; // Turso returns rows here
+    
+    for (const sub of subscribers) {
+      try {
+        await sendProfessionalEmail(sub.email, 'weekly');
+        logger.info(`Weekly email sent to ${sub.email}`);
+      } catch (err) {
+        logger.error(`Failed weekly email to ${sub.email}`, err);
+      }
     }
+  } catch (dbErr) {
+    logger.error("Failed to fetch subscribers for newsletter", dbErr);
   }
 });

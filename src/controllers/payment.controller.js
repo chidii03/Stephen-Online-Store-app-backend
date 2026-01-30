@@ -13,23 +13,18 @@ export const startPayment = async (req, res) => {
   const reference = `REF-${orderId}`; // Paystack unique ref
 
   try {
-    // 1. Save "PENDING" Order to SQLite
-    const insertOrder = db.prepare(`
-      INSERT INTO orders (order_id, reference, customer_name, customer_email, customer_phone, address, state, amount, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    insertOrder.run(orderId, reference, customer.name, customer.email, customer.phone, customer.address, customer.state, totalAmount, 'PENDING');
-
-    // 2. Save Cart Items
-    const insertItem = db.prepare(`
-      INSERT INTO order_items (order_id, product_name, qty, price, image)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-
-    cart.forEach(item => {
-      insertItem.run(orderId, item.name, item.qty, item.price, item.image);
-    });
+    // Save order and items in a batch for Turso compatibility
+    await db.batch([
+        {
+            sql: `INSERT INTO orders (order_id, reference, customer_name, customer_email, customer_phone, address, state, amount, status)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [orderId, reference, customer.name, customer.email, customer.phone, customer.address, customer.state, totalAmount, 'PENDING']
+        },
+        ...cart.map(item => ({
+            sql: `INSERT INTO order_items (order_id, product_name, qty, price, image) VALUES (?, ?, ?, ?, ?)`,
+            args: [orderId, item.name, item.qty, item.price, item.image]
+        }))
+    ], "write");
 
     // 3. Initialize Paystack
     const paystackResponse = await initializeTransaction(customer.email, totalAmount, reference);
@@ -41,7 +36,7 @@ export const startPayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Payment Start Error:", error);
     res.status(500).json({ error: "Server Error initiating payment" });
   }
 };
