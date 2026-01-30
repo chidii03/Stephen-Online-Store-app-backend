@@ -4,23 +4,18 @@ import { env } from '../config/env.js';
 import cron from 'node-cron';
 import { logger } from '../utils/logger.js';
 
-// Setup Transporter using env variables
+// Setup Transporter - Optimized for Render/Cloud environments
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // Use false for 587
+  service: 'gmail', // Using 'service' is more robust for Gmail on Render
   auth: {
     user: env.MAIL_USER,
     pass: env.MAIL_PASS,
   },
-  tls: {
-    rejectUnauthorized: false 
-  }
 });
 
 /**
  * 1. Subscription Logic
- * Handles saving to Turso and sending the welcome email
+ * Updated: Sends email even if user already exists in DB
  */
 export const subscribe = async (req, res) => {
   const { email } = req.body;
@@ -30,34 +25,44 @@ export const subscribe = async (req, res) => {
   }
 
   try {
-    // Save to Turso Cloud Database
-    await db.execute({
-      sql: "INSERT INTO subscribers (email) VALUES (?)",
-      args: [email]
-    });
-    
-    // Send the professional welcome email
+    // 1. Attempt to save to Turso
+    try {
+      await db.execute({
+        sql: "INSERT INTO subscribers (email) VALUES (?)",
+        args: [email]
+      });
+      logger.info(`New subscriber added: ${email}`);
+    } catch (dbError) {
+      // If it's a UNIQUE constraint error, we just log it and move on to sending the email
+      if (dbError.message?.includes('UNIQUE')) {
+        logger.info(`Existing subscriber requested email: ${email}`);
+      } else {
+        throw dbError; // Rethrow if it's a real DB connection error
+      }
+    }
+
+    // 2. Send the welcome email (Always sends, even for existing users)
     await sendProfessionalEmail(email, 'welcome');
     
     return res.status(200).json({ 
       success: true, 
-      message: "Subscription successful! Welcome email sent." 
+      message: "Check your inbox! The welcome email is on its way." 
     });
 
   } catch (error) {
-    // Handle Turso Unique Constraint (User already exists)
-    if (error.message?.includes('UNIQUE')) {
-      return res.status(400).json({ error: "You are already subscribed!" });
-    }
-    
     logger.error("Subscription Error:", error);
+    
+    // Check specifically for SMTP timeouts to give a better error message
+    if (error.code === 'ETIMEDOUT') {
+      return res.status(503).json({ error: "Email service timed out. Please try again in a moment." });
+    }
+
     return res.status(500).json({ error: "Internal server error" });
   }
 };
 
 /**
  * 2. Professional Template Switcher
- * Contains the upgraded HTML templates from your original frontend logic
  */
 const sendProfessionalEmail = async (email, type) => {
   const templates = {
@@ -70,10 +75,10 @@ const sendProfessionalEmail = async (email, type) => {
               <h2 style="text-align: center; color: #4b70f5;">Welcome to Steve-Obizz-Store!</h2>
               <p style="font-size: 16px; line-height: 1.6;">Dear New Customer,</p>
               <p style="font-size: 16px; line-height: 1.6;">
-                We are genuinely delighted to welcome you to the Steve-Obizz-Store. Your subscription marks the beginning of an exciting journey.
+                We are genuinely delighted to welcome you to the Steve-Obizz-Store. Your subscription marks the beginning of an exciting journey, and we couldn't be more thrilled to have you join us.
               </p>
               <div style="margin-top: 20px; text-align: center;">
-                <img src="https://images.unsplash.com/photo-1677530410699-f692c94cf806?w=600" style="max-width:100%; border-radius:10px;">
+                <img src="https://images.unsplash.com/photo-1677530410699-f692c94cf806?w=600" style="max-width: 100%; border-radius: 10px;">
               </div>
               <p style="font-size: 16px; line-height: 1.6;">
                 As a valued member, you can look forward to receiving carefully curated content, exclusive offers, and first access to our latest product launches.
@@ -84,6 +89,7 @@ const sendProfessionalEmail = async (email, type) => {
               <footer style="margin-top: 30px; text-align: center; font-size: 14px; color: #666;">
                 <p>Warm regards,<br>The Steve-Obizz-Store Team</p>
                 <p>No 69 Obafemi Awolowo Way, Ikeja, Lagos, Nigeria</p>
+                <p>+234 803 304 8352</p>
               </footer>
             </div>
           </body>
@@ -96,7 +102,6 @@ const sendProfessionalEmail = async (email, type) => {
           <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; padding: 20px; margin: 0;">
             <div style="max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
               <h2 style="color: #4b70f5; text-align: center;">Weekly Inspiration</h2>
-              <p style="font-size: 16px; line-height: 1.6;">Hello from the Team,</p>
               <div style="margin-top: 20px; text-align: center;">
                 <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600" style="width: 100%; border-radius: 10px; margin-bottom: 15px;">
               </div>
@@ -105,7 +110,7 @@ const sendProfessionalEmail = async (email, type) => {
               </p>
               <footer style="margin-top: 30px; text-align: center; font-size: 14px; color: #666;">
                 <p>The Steve-Obizz-Store Team</p>
-                <p>+234 803 304 8352</p>
+                <p>No 69 Obafemi Awolowo Way, Ikeja, Lagos, Nigeria</p>
               </footer>
             </div>
           </body>
@@ -124,26 +129,20 @@ const sendProfessionalEmail = async (email, type) => {
 };
 
 /**
- * 3. REAL Weekly Cron Job
- * Runs every Monday at 9:00 AM. 
- * Fetches all emails from Turso and sends the 'weekly' template.
+ * 3. Weekly Cron Job (Every Monday at 9:00 AM)
  */
 cron.schedule('0 9 * * 1', async () => {
   logger.info("Running Weekly Newsletter Cron...");
-  
   try {
     const result = await db.execute("SELECT email FROM subscribers");
-    const subscribers = result.rows; 
-    
-    for (const sub of subscribers) {
+    for (const sub of result.rows) {
       try {
         await sendProfessionalEmail(sub.email, 'weekly');
-        logger.info(`Weekly email sent to ${sub.email}`);
       } catch (err) {
-        logger.error(`Failed weekly email to ${sub.email}`, err);
+        logger.error(`Cron Failed for ${sub.email}:`, err);
       }
     }
   } catch (dbErr) {
-    logger.error("Failed to fetch subscribers for newsletter", dbErr);
+    logger.error("Cron DB Error:", dbErr);
   }
 });
