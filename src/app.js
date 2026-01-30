@@ -26,7 +26,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2ec6a281e943abce02fcef2698ce9aa307531ad8
 app.get('/', (req, res) => {
   res.send('🚀 Stephen Online Store API is running smoothly!');
 });
