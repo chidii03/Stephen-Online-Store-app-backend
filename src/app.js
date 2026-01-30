@@ -21,12 +21,15 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 
+app.use(cors({
+  origin: 'https://stephen-online-store-my-app.vercel.app',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
+}));
+
 app.get('/', (req, res) => {
   res.send('🚀 Stephen Online Store API is running smoothly!');
 });
 
 export default app;
-<<<<<<< HEAD
-=======
 
->>>>>>> e9b962823ed7c8f1f8a0c7b5e071c8adf70cdd93
