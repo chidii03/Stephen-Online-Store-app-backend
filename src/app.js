@@ -3,10 +3,13 @@ import cors from 'cors';
 import helmet from 'helmet';
 
 import paymentRoutes from './routes/payment.routes.js';
-import newsletterRoutes from './routes/newsletter.routes.js';
+import contactRoutes from './routes/contact.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import orderRoutes from './routes/order.routes.js';
+import newsletterRoutes from './routes/newsletter.routes.js';
+
+
 
 const app = express();
 
@@ -19,6 +22,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 
 app.use(cors({
