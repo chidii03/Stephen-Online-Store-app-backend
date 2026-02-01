@@ -6,7 +6,7 @@ export const env = {
   PAYSTACK_SECRET: process.env.PAYSTACK_SECRET_KEY,
   MAIL_USER: process.env.MAIL_USER,
   MAIL_PASS: process.env.MAIL_PASS,
-  FRONTEND_URL: process.env.FRONTEND_URL || 'https://stephen-online-store-my-app.vercel.app',
+  FRONTEND_URL: process.env.FRONTEND_URL || 'https://steveobizzstore.vercel.app',
   JWT_SECRET: process.env.JWT_SECRET || 'fallback_secret_key_change_this',
   ADMIN_EMAIL: 'stephenokwu@yahoo.com', // Hardcoded for MVP, or move to DB
   ADMIN_PASS: 'admin123'

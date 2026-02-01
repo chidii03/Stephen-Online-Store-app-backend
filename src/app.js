@@ -26,7 +26,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 
 app.use(cors({
-  origin: 'https://stephen-online-store-my-app.vercel.app',
+  origin: 'https://steveobizzstore.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));

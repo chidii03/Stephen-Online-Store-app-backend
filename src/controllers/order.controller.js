@@ -29,7 +29,7 @@ export const createOrder = async (req, res) => {
                 email: email,
                 amount: Math.round(amount * 100), // Kobo conversion
                 reference: orderId,
-                callback_url: `https://stephen-online-store-my-app.vercel.app/order-success?id=${orderId}`,
+                callback_url: `https://steveobizzstore.vercel.app/order-success?id=${orderId}`,
                 metadata: { fullName, phone }
             },
             {
