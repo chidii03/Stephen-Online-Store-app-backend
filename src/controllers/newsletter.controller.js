@@ -84,7 +84,7 @@ const sendProfessionalEmail = async (email, type) => {
                 As a valued member, you can look forward to receiving carefully curated content, exclusive offers, and first access to our latest product launches.
               </p>
               <div style="margin-top: 20px; text-align: center;">
-                <a href="https://stephen-online-store-my-app.vercel.app" style="display: inline-block; background-color: #4b70f5; color: white; padding: 12px 20px; border-radius: 5px; text-decoration: none; font-weight: bold;">Shop Now</a>
+                <a href="https://steveobizzstore.vercel.app" style="display: inline-block; background-color: #4b70f5; color: white; padding: 12px 20px; border-radius: 5px; text-decoration: none; font-weight: bold;">Shop Now</a>
               </div>
               <footer style="margin-top: 30px; text-align: center; font-size: 14px; color: #666;">
                 <p>Warm regards,<br>The Steve-Obizz-Store Team</p>
