@@ -26,7 +26,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 
 app.use(cors({
-  origin: 'https://steveobizzstore.vercel.app',
+  origin: ['http://localhost:3000','https://steveobizzstore.vercel.app'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
@@ -36,4 +36,3 @@ app.get('/', (req, res) => {
 });
 
 export default app;
-
