@@ -11,37 +11,50 @@ export const handleContactForm = async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // 1. Twilio - Logic fix for undefined variable  
-    const twilioClient = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
-    
-    // Ensure the number has the 'whatsapp:' prefix correctly
-    const fromNumber = env.TWILIO_WHATSAPP_NUMBER.startsWith('whatsapp:') 
-      ? env.TWILIO_WHATSAPP_NUMBER
-      : `whatsapp:${env.TWILIO_WHATSAPP_NUMBER}`;
+    // --- WhatsApp notification (optional) – never fail the whole request ---
+    let whatsappResult = null;
+    if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_WHATSAPP_NUMBER && env.ADMIN_PHONE) {
+      try {
+        const twilioClient = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
+        const fromNumber = env.TWILIO_WHATSAPP_NUMBER.startsWith('whatsapp:')
+          ? env.TWILIO_WHATSAPP_NUMBER
+          : `whatsapp:${env.TWILIO_WHATSAPP_NUMBER}`;
 
-    const whatsappPromise = twilioClient.messages.create({
-      from: fromNumber, 
-      to: `whatsapp:+2348079379510`,
-      body: `🚀 New Web Inquiry\n\nName: ${name}\nPhone: ${phone}\nEmail: ${email}\nMessage: ${message}`
-    });
+        whatsappResult = await twilioClient.messages.create({
+          from: fromNumber,
+          to: `whatsapp:${env.ADMIN_PHONE.replace(/^whatsapp:/, '')}`, // ensure no double prefix
+          body: `🚀 New Web Inquiry\n\nName: ${name}\nPhone: ${phone}\nEmail: ${email}\nMessage: ${message}`
+        });
+        logger.info(`WhatsApp sent to admin for ${email}`);
+      } catch (twilioError) {
+        // Log but continue – don't break the request
+        logger.warn(`WhatsApp failed for ${email}: ${twilioError.message}`);
+      }
+    } else {
+      logger.info("Twilio credentials missing – WhatsApp notification skipped");
+    }
 
-    // 2. Nodemailer - Port 465 is more stable on Render for Gmail
+    // --- Email confirmation to customer – with retry and timeout ---
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
-      port: 465,
-      secure: true, // Use SSL
+      port: 587,                // Use 587 with STARTTLS (more reliable on Render)
+      secure: false,             // false for 587
       auth: {
         user: env.EMAIL_USER,
         pass: env.EMAIL_PASS,
       },
       tls: {
-        rejectUnauthorized: false 
-      }
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3'
+      },
+      connectionTimeout: 10000,  // 10 seconds
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
 
     const mailOptions = {
       from: `"Steve O'Bizz Store" <${env.EMAIL_USER}>`,
-      to: email, 
+      to: email,
       subject: `We received your inquiry, ${name}!`,
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #1e3a8a; padding: 20px; border-radius: 10px;">
@@ -55,10 +68,13 @@ export const handleContactForm = async (req, res) => {
         </div>`
     };
 
-    await Promise.all([whatsappPromise, transporter.sendMail(mailOptions)]);
-    
-    logger.info(`Contact form success: ${email}`);
-    return res.status(200).json({ message: "Success" });
+    await transporter.sendMail(mailOptions);
+    logger.info(`Contact email sent to ${email}`);
+
+    return res.status(200).json({ 
+      message: "Success",
+      whatsapp: whatsappResult ? "sent" : "skipped" 
+    });
 
   } catch (error) {
     logger.error("Contact Form Backend Error:", error);
