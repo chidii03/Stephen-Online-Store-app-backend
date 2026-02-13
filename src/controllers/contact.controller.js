@@ -15,9 +15,9 @@ export const handleContactForm = async (req, res) => {
     const twilioClient = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
     
     // Ensure the number has the 'whatsapp:' prefix correctly
-    const fromNumber = env.TWILIO_PHONE_NUMBER.startsWith('whatsapp:') 
-      ? env.TWILIO_PHONE_NUMBER 
-      : `whatsapp:${env.TWILIO_PHONE_NUMBER}`;
+    const fromNumber = env. TWILIO_WHATSAPP_NUMBER.startsWith('whatsapp:') 
+      ? env. TWILIO_WHATSAPP_NUMBER
+      : `whatsapp:${env. TWILIO_WHATSAPP_NUMBER}`;
 
     const whatsappPromise = twilioClient.messages.create({
       from: fromNumber, 
