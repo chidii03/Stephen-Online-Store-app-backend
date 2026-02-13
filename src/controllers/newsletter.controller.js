@@ -14,8 +14,8 @@ const transporter = nodemailer.createTransport({
   secure: true, // Use true for port 465
   pool: true,   // Keeps connections open for multiple emails (better for cron)
   auth: {
-    user: env.MAIL_USER,
-    pass: env.MAIL_PASS,
+    user: env.EMAIL_USER,
+    pass: env.EMAIL_PASS,
   },
   tls: {
     rejectUnauthorized: false // Helps avoid handshake errors in cloud environments
@@ -131,7 +131,7 @@ const sendProfessionalEmail = async (email, type) => {
   const content = templates[type];
 
   return transporter.sendMail({
-    from: `"Steve Obizz Store Team" <${env.MAIL_USER}>`,
+    from: `"Steve Obizz Store Team" <${env.EMAIL_USER}>`,
     to: email,
     subject: content.subject,
     html: content.html

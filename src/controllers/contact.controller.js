@@ -11,13 +11,13 @@ export const handleContactForm = async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // 1. Twilio - Logic fix for undefined variable
+    // 1. Twilio - Logic fix for undefined variable  
     const twilioClient = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
     
     // Ensure the number has the 'whatsapp:' prefix correctly
-    const fromNumber = env. TWILIO_WHATSAPP_NUMBER.startsWith('whatsapp:') 
-      ? env. TWILIO_WHATSAPP_NUMBER
-      : `whatsapp:${env. TWILIO_WHATSAPP_NUMBER}`;
+    const fromNumber = env.TWILIO_WHATSAPP_NUMBER.startsWith('whatsapp:') 
+      ? env.TWILIO_WHATSAPP_NUMBER
+      : `whatsapp:${env.TWILIO_WHATSAPP_NUMBER}`;
 
     const whatsappPromise = twilioClient.messages.create({
       from: fromNumber, 
@@ -31,8 +31,8 @@ export const handleContactForm = async (req, res) => {
       port: 465,
       secure: true, // Use SSL
       auth: {
-        user: env.MAIL_USER,
-        pass: env.MAIL_PASS,
+        user: env.EMAIL_USER,
+        pass: env.EMAIL_PASS,
       },
       tls: {
         rejectUnauthorized: false 
@@ -40,7 +40,7 @@ export const handleContactForm = async (req, res) => {
     });
 
     const mailOptions = {
-      from: `"Steve O'Bizz Store" <${env.MAIL_USER}>`,
+      from: `"Steve O'Bizz Store" <${env.EMAIL_USER}>`,
       to: email, 
       subject: `We received your inquiry, ${name}!`,
       html: `

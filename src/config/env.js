@@ -4,8 +4,8 @@ dotenv.config();
 const required = {
   PORT: process.env.PORT || 5000,
   PAYSTACK_SECRET: process.env.PAYSTACK_SECRET_KEY,
-  MAIL_USER: process.env.MAIL_USER,
-  MAIL_PASS: process.env.MAIL_PASS,
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASS: process.env.EMAIL_PASS,
   TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
   TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
   FRONTEND_URL: process.env.FRONTEND_URL || "https://steveobizzstore.vercel.app",
