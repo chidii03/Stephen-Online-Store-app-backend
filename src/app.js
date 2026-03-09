@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 
+import './keep-alive.js'; 
+
 import paymentRoutes from './routes/payment.routes.js';
 import contactRoutes from './routes/contact.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
