@@ -1,7 +1,7 @@
 // controllers/admin.controller.js
 import db from '../db/database.js';
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "steveadmin2024";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // ── POST /api/admin/login ─────────────────────────────────────────────────────
 export const adminLogin = async (req, res) => {
