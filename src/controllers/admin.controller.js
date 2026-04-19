@@ -51,8 +51,8 @@ export const debugOrders = async (req, res) => {
   try {
     const count  = await db.execute("SELECT COUNT(*) as total FROM orders");
     const sample = await db.execute(
-      "SELECT order_id, customer_name, amount, status, created_at FROM orders LIMIT 5"
-    );
+  "SELECT order_id, customer_name, total_amount, status, created_at FROM orders LIMIT 5"
+);
     return res.json({
       total:  count.rows?.[0]?.total  ?? 0,
       sample: sample.rows ?? [],
