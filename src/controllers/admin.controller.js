@@ -18,7 +18,6 @@ export const getAllOrders = async (req, res) => {
   try {
     const result = await db.execute("SELECT * FROM orders ORDER BY created_at DESC");
     console.log("[getAllOrders] rows:", result.rows?.length ?? 0);
-    // Turso returns { rows: [...] } — always send a plain array
     return res.json(result.rows ?? []);
   } catch (e) {
     console.error("[getAllOrders] DB error:", e.message);
@@ -44,9 +43,6 @@ export const updateOrderStatus = async (req, res) => {
   }
 };
 
-// ── GET /api/admin/debug ──────────────────────────────────────────────────────
-// Open this URL in your browser to verify DB is working:
-// https://steveobizzstore.onrender.com/api/admin/debug
 export const debugOrders = async (req, res) => {
   try {
     const count  = await db.execute("SELECT COUNT(*) as total FROM orders");

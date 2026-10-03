@@ -39,7 +39,11 @@ app.get('/health', (req, res) => {
 });
 
 // ✅ Self-ping every 13 minutes — backup keep-alive (no extra file needed)
-const BACKEND_URL = 'https://steveobizzstore.onrender.com/health';
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  (process.env.RENDER_PUBLIC_DOMAIN
+    ? `https://${process.env.RENDER_PUBLIC_DOMAIN}/health`
+    : 'http://localhost:8080/health');
 const PING_INTERVAL = 13 * 60 * 1000;
 
 const pingServer = async () => {
