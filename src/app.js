@@ -44,6 +44,7 @@ const BACKEND_URL =
   (process.env.RENDER_PUBLIC_DOMAIN
     ? `https://${process.env.RENDER_PUBLIC_DOMAIN}/health`
     : 'http://localhost:8080/health');
+    
 const PING_INTERVAL = 13 * 60 * 1000;
 
 const pingServer = async () => {
