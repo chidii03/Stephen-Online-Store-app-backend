@@ -16,7 +16,13 @@ export const adminLogin = async (req, res) => {
 // ── GET /api/admin/orders ─────────────────────────────────────────────────────
 export const getAllOrders = async (req, res) => {
   try {
-    const result = await db.execute("SELECT * FROM orders ORDER BY created_at DESC");
+    const result = await db.execute("SELECT * FROM orders WHERE paystack_status = 'success' AND status IN ('PAID', 'SHIPPED', 'DELIVERED') ORDER BY created_at DESC");
+    result.rows = result.rows.map((order) => ({
+      ...order,
+      customer_email: order.email,
+      customer_phone: order.phone,
+      total_amount: order.total_amount,
+    }));
     console.log("[getAllOrders] rows:", result.rows?.length ?? 0);
     return res.json(result.rows ?? []);
   } catch (e) {
@@ -28,12 +34,12 @@ export const getAllOrders = async (req, res) => {
 // ── POST /api/admin/update-status ─────────────────────────────────────────────
 export const updateOrderStatus = async (req, res) => {
   const { orderId, status } = req.body ?? {};
-  if (!orderId || !status) {
+  if (!orderId || !['SHIPPED', 'DELIVERED'].includes(status)) {
     return res.status(400).json({ error: "orderId and status are required" });
   }
   try {
     await db.execute({
-      sql:  "UPDATE orders SET status = ? WHERE order_id = ?",
+      sql:  "UPDATE orders SET status = ? WHERE order_id = ? AND paystack_status = 'success' AND status IN ('PAID', 'SHIPPED')",
       args: [status, orderId],
     });
     return res.json({ success: true });
@@ -47,7 +53,7 @@ export const debugOrders = async (req, res) => {
   try {
     const count  = await db.execute("SELECT COUNT(*) as total FROM orders");
     const sample = await db.execute(
-  "SELECT order_id, customer_name, total_amount, status, created_at FROM orders LIMIT 5"
+      "SELECT order_id, customer_name, total_amount, status, paystack_status, created_at FROM orders LIMIT 5"
 );
     return res.json({
       total:  count.rows?.[0]?.total  ?? 0,

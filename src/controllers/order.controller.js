@@ -1,194 +1,88 @@
-import db from '../db/database.js';
-import twilio from 'twilio';
-import axios from 'axios';
-import nodemailer from 'nodemailer';
+import axios from "axios";
+import db from "../db/database.js";
+import { initializeTransaction, verifyTransaction } from "../services/paystack.service.js";
+import { sendOrderReceipt } from "../services/email.service.js";
 
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const money = (value) => Number(value || 0);
 
-// --- 1. EMAIL CONFIGURATION ---
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS 
-    }
-});
-
-// --- 2. INITIALIZE ORDER ---
 export const createOrder = async (req, res) => {
-    const { email, phone, firstName, lastName, address, state, cart, amount } = req.body;    
-    const orderId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
-    const fullName = `${firstName} ${lastName}`;
-
-    try {
-        console.log(`Initializing Paystack for ${orderId} with amount: ₦${amount}`);
-
-        const paystackRes = await axios.post(
-            'https://api.paystack.co/transaction/initialize',
-            {
-                email: email,
-                amount: Math.round(amount * 100), // Kobo conversion
-                reference: orderId,
-                callback_url: `https://steveobizzstore.vercel.app/order-success?id=${orderId}`,
-                metadata: { fullName, phone }
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        // 2. Save to DB using Turso Batch (Transaction)
-        await db.batch([
-            {
-                sql: `INSERT INTO orders (order_id, email, phone, customer_name, address, state, total_amount, status)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
-                args: [orderId, email, phone, fullName, address, state, amount]
-            },
-            ...cart.map(item => ({
-                sql: `INSERT INTO order_items (order_id, product_name, qty, price) VALUES (?, ?, ?, ?)`,
-                args: [orderId, item.name, item.qty, item.price]
-            }))
-        ], "write");
-
-        res.status(201).json({ success: true, checkoutUrl: paystackRes.data.data.authorization_url });
-
-    } catch (error) {
-        console.error("Paystack Error Detail:", error.response?.data || error.message);
-        res.status(500).json({ 
-            error: "Failed to initialize order", 
-            details: error.response?.data?.message || error.message 
-        });
-    }
+  const { email, phone, firstName, lastName, address, state, cart, amount } = req.body ?? {};
+  if (!email || !phone || !firstName || !lastName || !Array.isArray(cart) || cart.length === 0 || !Number.isFinite(money(amount)) || money(amount) <= 0) {
+    return res.status(400).json({ error: "Invalid order data" });
+  }
+  const orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const fullName = `${firstName} ${lastName}`.trim();
+  try {
+    await db.batch([
+      { sql: `INSERT INTO orders (order_id, reference, email, phone, customer_name, address, state, total_amount, status, paystack_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 'pending')`, args: [orderId, orderId, email, phone, fullName, address || "", state || "", money(amount)] },
+      ...cart.map((item) => ({ sql: `INSERT INTO order_items (order_id, product_name, qty, price, image) VALUES (?, ?, ?, ?, ?)`, args: [orderId, String(item.name || ""), Math.max(1, Number(item.qty || 1)), money(item.price), item.image || null] })),
+    ], "write");
+    const payment = await initializeTransaction(email, money(amount), orderId);
+    return res.status(201).json({ success: true, checkoutUrl: payment.authorization_url, reference: orderId });
+  } catch (error) {
+    await db.execute({ sql: "UPDATE orders SET status = 'FAILED', paystack_status = 'failed' WHERE order_id = ? AND status = 'PENDING'", args: [orderId] }).catch(() => {});
+    console.error("Order initialization error:", error.message);
+    return res.status(500).json({ error: "Failed to initialize order" });
+  }
 };
 
-// --- 3. PAYSTACK WEBHOOK & NEW EMAIL TEXT ---
+export const processSuccessfulPayment = async (reference, paymentData = null) => {
+  const verification = paymentData || await verifyTransaction(reference);
+  if (verification.status !== "success" || verification.reference !== reference) return { verified: false, reason: "Payment is not successful" };
+  const orderResult = await db.execute({ sql: "SELECT * FROM orders WHERE reference = ? OR order_id = ?", args: [reference, reference] });
+  const order = orderResult.rows[0];
+  if (!order) return { verified: false, reason: "Order not found" };
+  if (Number(verification.amount) !== Math.round(Number(order.total_amount) * 100)) return { verified: false, reason: "Payment amount mismatch" };
+
+  const paidAt = verification.paid_at || new Date().toISOString();
+  const update = await db.execute({ sql: `UPDATE orders SET status = 'PAID', paystack_status = 'success', payment_verified_at = CURRENT_TIMESTAMP, paid_at = ? WHERE order_id = ? AND status <> 'PAID'`, args: [paidAt, order.order_id] });
+  const duplicate = update.rowsAffected === 0;
+
+  const itemsResult = await db.execute({ sql: "SELECT * FROM order_items WHERE order_id = ? ORDER BY id", args: [order.order_id] });
+  if (!itemsResult.rows.length) throw new Error("Verified order has no items");
+  const claim = await db.execute({ sql: "UPDATE orders SET receipt_sent_at = CURRENT_TIMESTAMP WHERE order_id = ? AND status = 'PAID' AND paystack_status = 'success' AND receipt_sent_at IS NULL", args: [order.order_id] });
+  if (claim.rowsAffected > 0) {
+    try {
+      await sendOrderReceipt({ ...order, paid_at: paidAt }, itemsResult.rows);
+    } catch (error) {
+      await db.execute({ sql: "UPDATE orders SET receipt_sent_at = NULL WHERE order_id = ? AND receipt_sent_at IS NOT NULL", args: [order.order_id] }).catch(() => {});
+      throw error;
+    }
+  }
+  return { verified: true, duplicate, order: { ...order, status: "PAID", paystack_status: "success" } };
+};
+
+export const verifyOrderPayment = async (req, res) => {
+  const reference = String(req.params.reference || "");
+  if (!reference) return res.status(400).json({ error: "Reference required" });
+  try {
+    const result = await processSuccessfulPayment(reference);
+    if (!result.verified) return res.status(400).json(result);
+    return res.json({ success: true, status: "PAID", duplicate: Boolean(result.duplicate) });
+  } catch (error) {
+    console.error("Payment verification error:", error.message);
+    return res.status(502).json({ error: "Payment could not be verified" });
+  }
+};
+
 export const handleWebhook = async (req, res) => {
-    const event = req.body;
-
-    if (event.event === 'charge.success') {
-        const reference = event.data.reference;
-        const paidAt = new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos' });
-        
-        const deliveryDate = new Date();
-        deliveryDate.setDate(deliveryDate.getDate() + 3);
-        const deliveryString = deliveryDate.toLocaleDateString('en-NG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-        try {
-            // Update status
-            await db.execute({
-                sql: "UPDATE orders SET status = 'PAID' WHERE order_id = ?",
-                args: [reference]
-            });
-
-            // Fetch order and items
-            const orderRes = await db.execute({
-                sql: "SELECT * FROM orders WHERE order_id = ?",
-                args: [reference]
-            });
-            const order = orderRes.rows[0];
-
-            const itemsRes = await db.execute({
-                sql: "SELECT * FROM order_items WHERE order_id = ?",
-                args: [reference]
-            });
-            const items = itemsRes.rows;
-
-            if (!order) return res.sendStatus(404);
-
-            const itemsHtml = items.map(item => `
-                <tr>
-                    <td style="padding: 12px 0; border-bottom: 1px solid #edf2f7;">
-                        <p style="margin: 0; font-weight: bold; color: #2d3748;">${item.product_name}</p>
-                        <p style="margin: 0; font-size: 12px; color: #718096;">Qty: ${item.qty}</p>
-                    </td>
-                    <td style="padding: 12px 0; border-bottom: 1px solid #edf2f7; text-align: right; color: #2d3748;">
-                        ₦${item.price.toLocaleString()}
-                    </td>
-                </tr>
-            `).join('');
-
-            const mailOptions = {
-                from: `"Steve O Bizz Store" <${process.env.EMAIL_USER}>`,
-                to: order.email,
-                subject: `Order Confirmed: #${reference}`,
-                html: `
-                    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; padding: 20px;">
-                        <div style="max-width: 600px; margin: auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                            <div style="background: #2563eb; padding: 30px; text-align: center; color: white;">
-                                <h1 style="margin: 0; font-size: 24px;">Order Confirmed!</h1>
-                                <p style="margin-top: 10px; opacity: 0.9;">Thank you for shopping with Steve O Bizz.</p>
-                            </div>
-                            <div style="padding: 30px;">
-                                <p style="font-size: 16px; color: #4a5568;">Hi <strong>${order.customer_name}</strong>,</p>
-                                <p style="color: #4a5568; line-height: 1.6;">Your payment was successful. Below is your official receipt.</p>
-                                <div style="background: #f8fafc; border-left: 4px solid #2563eb; padding: 20px; margin: 25px 0;">
-                                    <p style="margin: 0; font-size: 14px; color: #64748b;">Order Number</p>
-                                    <p style="margin: 0; font-size: 18px; font-weight: bold; color: #1e293b;">#${reference}</p>
-                                    <p style="margin: 15px 0 0 0; font-size: 14px; color: #64748b;">Estimated Delivery</p>
-                                    <p style="margin: 0; font-size: 16px; font-weight: bold; color: #16a34a;">${deliveryString}</p>
-                                </div>
-                                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                                    <thead>
-                                        <tr>
-                                            <th style="text-align: left; font-size: 12px; text-transform: uppercase; color: #94a3b8; padding-bottom: 10px;">Item</th>
-                                            <th style="text-align: right; font-size: 12px; text-transform: uppercase; color: #94a3b8; padding-bottom: 10px;">Price</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>${itemsHtml}</tbody>
-                                </table>
-                                <div style="text-align: right; border-top: 2px solid #edf2f7; padding-top: 20px;">
-                                    <p style="margin: 0; color: #64748b;">Total Amount Paid</p>
-                                    <h2 style="margin: 0; color: #2563eb; font-size: 28px;">₦${order.total_amount.toLocaleString()}</h2>
-                                </div>
-                                <div style="margin-top: 40px; padding: 20px; border: 1px dashed #cbd5e1; border-radius: 8px;">
-                                    <h4 style="margin: 0 0 10px 0; color: #475569;">Delivery Details</h4>
-                                    <p style="margin: 0; font-size: 14px; color: #64748b;">${order.address}, ${order.state}</p>
-                                    <p style="margin: 5px 0 0 0; font-size: 14px; color: #64748b;">Phone: ${order.phone}</p>
-                                </div>
-                                <div style="text-align: center; margin-top: 40px;">
-                                    <a href="https://wa.me/${process.env.ADMIN_PHONE}" style="background: #25d366; color: white; padding: 12px 25px; text-decoration: none; border-radius: 6px; font-weight: bold;">Chat with Us on WhatsApp</a>
-                                </div>
-                            </div>
-                            <div style="background: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #94a3b8;">
-                                <p>&copy; ${new Date().getFullYear()} Steve O Bizz Store. All rights reserved.</p>
-                            </div>
-                        </div>
-                    </div>
-                `
-            };
-
-            await transporter.sendMail(mailOptions);
-            console.log(`Receipt sent to ${order.email}`);
-
-        } catch (err) {
-            console.error("Webhook Logic Error:", err.message);
-        }
-    }
-    res.sendStatus(200);
+  if (req.body?.event !== "charge.success") return res.sendStatus(200);
+  try {
+    const result = await processSuccessfulPayment(req.body.data.reference, req.body.data);
+    if (!result.verified) return res.status(400).json(result);
+    return res.sendStatus(200);
+  } catch (error) {
+    console.error("Webhook processing error:", error.message);
+    return res.sendStatus(500);
+  }
 };
 
-// --- 4. TRACK ORDER ---
 export const trackOrder = async (req, res) => {
-    const { trackingId } = req.params;
-    try {
-        const orderRes = await db.execute({
-            sql: "SELECT * FROM orders WHERE order_id = ?",
-            args: [trackingId]
-        });
-        const order = orderRes.rows[0];
-
-        if (!order) return res.status(404).json({ error: "Order not found" });
-
-        const itemsRes = await db.execute({
-            sql: "SELECT * FROM order_items WHERE order_id = ?",
-            args: [trackingId]
-        });
-        
-        res.json({ ...order, items: itemsRes.rows });
-    } catch (error) {
-        res.status(500).json({ error: "Tracking failed" });
-    }
+  try {
+    const orderResult = await db.execute({ sql: "SELECT * FROM orders WHERE order_id = ?", args: [req.params.trackingId] });
+    const order = orderResult.rows[0];
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const items = await db.execute({ sql: "SELECT * FROM order_items WHERE order_id = ? ORDER BY id", args: [order.order_id] });
+    return res.json({ ...order, items: items.rows });
+  } catch { return res.status(500).json({ error: "Tracking failed" }); }
 };

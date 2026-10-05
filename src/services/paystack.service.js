@@ -12,7 +12,7 @@ export const initializeTransaction = async (email, amount, reference) => {
         email,
         amount: amount * 100, // Convert to Kobo
         reference,
-        callback_url: `${process.env.FRONTEND_URL}/order-success` 
+        callback_url: `${process.env.FRONTEND_URL}/order-success?reference=${encodeURIComponent(reference)}`
       },
       {
         headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
@@ -22,5 +22,17 @@ export const initializeTransaction = async (email, amount, reference) => {
   } catch (error) {
     console.error("Paystack Init Error:", error.response?.data || error.message);
     throw new Error("Payment initialization failed");
+  }
+};
+
+export const verifyTransaction = async (reference) => {
+  try {
+    const response = await axios.get(`${PAYSTACK_URL}/transaction/verify/${encodeURIComponent(reference)}`, {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+    });
+    return response.data.data;
+  } catch (error) {
+    console.error("Paystack Verify Error:", error.response?.data || error.message);
+    throw new Error("Payment verification failed");
   }
 };

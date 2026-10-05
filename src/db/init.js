@@ -12,7 +12,11 @@ const schema = [
     state TEXT,
     total_amount REAL,
     status TEXT DEFAULT 'PENDING', 
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    paystack_status TEXT,
+    paid_at DATETIME,
+    payment_verified_at DATETIME,
+    receipt_sent_at DATETIME
   );`,
   `CREATE TABLE IF NOT EXISTS order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,10 +40,15 @@ async function setup() {
     for (const statement of schema) {
       await db.execute(statement);
     }
+    const columns = await db.execute("PRAGMA table_info(orders)");
+    const existing = new Set(columns.rows.map((row) => row.name));
+    for (const [name, type] of [["paystack_status", "TEXT"], ["paid_at", "DATETIME"], ["payment_verified_at", "DATETIME"], ["receipt_sent_at", "DATETIME"]]) {
+      if (!existing.has(name)) await db.execute(`ALTER TABLE orders ADD COLUMN ${name} ${type}`);
+    }
     console.log("✅ Tables created successfully in Turso!");
   } catch (err) {
     console.error("❌ Error initializing database:", err);
   }
 }
 
-setup();
+export const ready = setup();

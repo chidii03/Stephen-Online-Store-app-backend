@@ -1,44 +1,33 @@
-import nodemailer from 'nodemailer';
-import dotenv from 'dotenv';
-dotenv.config();
+import nodemailer from "nodemailer";
+import { env } from "../config/env.js";
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
+  service: "gmail",
+  auth: { user: env.EMAIL_USER, pass: env.EMAIL_PASS },
 });
 
-export const sendOrderReceipt = async (order, items) => {
-  const itemsHtml = items.map(i => `<li>${i.qty}x ${i.product_name} - ₦${i.price}</li>`).join('');
-  
-  const mailOptions = {
-    from: '"Steve O Bizz Store" <noreply@steveobizz.com>',
-    to: order.customer_email,
-    subject: `Order Confirmed: ${order.order_id}`,
-    html: `
-      <div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd;">
-        <h2 style="color: #000;">Thank you for your order!</h2>
-        <p>Hello ${order.customer_name},</p>
-        <p>We have received your payment. Your Tracking ID is: <strong>${order.order_id}</strong></p>
-        
-        <h3>Order Details:</h3>
-        <ul>${itemsHtml}</ul>
-        
-        <p><strong>Total: ₦${order.amount.toLocaleString()}</strong></p>
-        <p>Address: ${order.address}, ${order.state}</p>
-        
-        <br/>
-        <a href="${process.env.FRONTEND_URL}/track" style="background: black; color: white; padding: 10px 20px; text-decoration: none;">Track Order</a>
-      </div>
-    `
-  };
+const escapeHtml = (value) => String(value ?? "")
+  .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;").replaceAll('"', "&quot;")
+  .replaceAll("'", "&#039;");
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`📧 Receipt sent to ${order.customer_email}`);
-  } catch (error) {
-    console.error("Email Error:", error);
-  }
+const naira = (value) => `₦${Number(value || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+
+export const sendOrderReceipt = async (order, items) => {
+  if (!order?.email) throw new Error("Cannot send receipt without a customer email");
+  const rows = items.map((item) => `<tr><td>${escapeHtml(item.product_name)}</td><td>${escapeHtml(item.qty)}</td><td>${naira(item.price)}</td><td>${naira(Number(item.price || 0) * Number(item.qty || 0))}</td></tr>`).join("");
+  await transporter.sendMail({
+    from: `"Steve O Bizz Store" <${env.EMAIL_USER}>`,
+    to: order.email,
+    subject: `Order confirmed: ${order.order_id}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto">
+      <h2>Thank you for your order, ${escapeHtml(order.customer_name)}!</h2>
+      <p>Your Paystack payment was verified successfully.</p>
+      <p><strong>Customer email:</strong> ${escapeHtml(order.email)}<br><strong>Order:</strong> ${escapeHtml(order.order_id)}<br><strong>Payment reference:</strong> ${escapeHtml(order.reference || order.order_id)}<br><strong>Paid:</strong> ${escapeHtml(order.paid_at || "")}</p>
+      <table style="width:100%;border-collapse:collapse" border="1" cellpadding="8"><thead><tr><th>Product</th><th>Qty</th><th>Unit price</th><th>Line total</th></tr></thead><tbody>${rows}</tbody></table>
+      <p style="text-align:right;font-size:18px"><strong>Total paid: ${naira(order.total_amount)}</strong></p>
+      <p><strong>Delivery:</strong> ${escapeHtml(order.address)}, ${escapeHtml(order.state)}<br><strong>Phone:</strong> ${escapeHtml(order.phone)}</p>
+      <p><a href="${escapeHtml(env.FRONTEND_URL)}/track">Track your order</a></p>
+    </div>`,
+  });
 };
