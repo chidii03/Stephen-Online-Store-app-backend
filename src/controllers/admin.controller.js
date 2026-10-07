@@ -16,7 +16,11 @@ export const adminLogin = async (req, res) => {
 // ── GET /api/admin/orders ─────────────────────────────────────────────────────
 export const getAllOrders = async (req, res) => {
   try {
-    const result = await db.execute("SELECT * FROM orders WHERE paystack_status = 'success' AND status IN ('PAID', 'SHIPPED', 'DELIVERED') ORDER BY created_at DESC");
+    const result = await db.execute("SELECT * FROM orders WHERE paystack_status = 'success' ORDER BY created_at DESC");
+    for (const order of result.rows) {
+      const items = await db.execute({ sql: "SELECT * FROM order_items WHERE order_id = ? ORDER BY id", args: [order.order_id] });
+      order.items = items.rows;
+    }
     result.rows = result.rows.map((order) => ({
       ...order,
       customer_email: order.email,
