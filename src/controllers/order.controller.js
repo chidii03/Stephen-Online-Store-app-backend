@@ -51,15 +51,17 @@ export const processSuccessfulPayment = async (reference, paymentData = null) =>
   const itemsResult = await db.execute({ sql: "SELECT * FROM order_items WHERE order_id = ? ORDER BY id", args: [order.order_id] });
   if (!itemsResult.rows.length) throw new Error("Verified order has no items");
   const claim = await db.execute({ sql: "UPDATE orders SET receipt_sent_at = CURRENT_TIMESTAMP WHERE order_id = ? AND status = 'PAID' AND paystack_status = 'success' AND receipt_sent_at IS NULL", args: [order.order_id] });
-  if (claim.rowsAffected > 0) {
+  let receiptSent = Boolean(order.receipt_sent_at);
+  if (Number(claim.rowsAffected || 0) > 0) {
     try {
       await sendOrderReceipt({ ...order, paid_at: paidAt }, itemsResult.rows);
+      receiptSent = true;
     } catch (error) {
       await db.execute({ sql: "UPDATE orders SET receipt_sent_at = NULL WHERE order_id = ? AND receipt_sent_at IS NOT NULL", args: [order.order_id] }).catch(() => {});
       console.error("Receipt delivery failed after payment was persisted:", error.message);
     }
   }
-  return { verified: true, duplicate, order: { ...order, status: "PAID", paystack_status: "success", payment_reference: paymentReference, amount_paid: amountPaid } };
+  return { verified: true, duplicate, receiptSent, order: { ...order, status: "PAID", paystack_status: "success", payment_reference: paymentReference, amount_paid: amountPaid } };
 };
 
 export const verifyOrderPayment = async (req, res) => {
@@ -68,7 +70,7 @@ export const verifyOrderPayment = async (req, res) => {
   try {
     const result = await processSuccessfulPayment(reference);
     if (!result.verified) return res.status(400).json(result);
-    return res.json({ success: true, status: "PAID", duplicate: Boolean(result.duplicate) });
+    return res.json({ success: true, status: "PAID", duplicate: Boolean(result.duplicate), receiptSent: Boolean(result.receiptSent) });
   } catch (error) {
     console.error("Payment verification error:", error.message);
     return res.status(502).json({ error: "Payment could not be verified" });
