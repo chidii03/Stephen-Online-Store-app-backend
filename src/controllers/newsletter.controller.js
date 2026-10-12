@@ -157,7 +157,7 @@ if (process.env.ENABLE_CRON === 'true') {
       for (const sub of subscribers) {
         try {
           const transporter = createTransporter();
-          await transporter.sendMail({
+          transporter.sendMail({
             from: `"Steve Obizz Store Team" <${env.EMAIL_USER}>`,
             to: sub.email,
             subject: templates.weekly.subject,
