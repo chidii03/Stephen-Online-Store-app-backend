@@ -12,11 +12,12 @@ const escapeHtml = (value) => String(value ?? "")
   .replaceAll("'", "&#039;");
 
 const naira = (value) => `₦${Number(value || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export const sendOrderReceipt = async (order, items) => {
   if (!order?.email) throw new Error("Cannot send receipt without a customer email");
   const rows = items.map((item) => `<tr><td>${escapeHtml(item.product_name)}</td><td>${escapeHtml(item.qty)}</td><td>${naira(item.price)}</td><td>${naira(Number(item.price || 0) * Number(item.qty || 0))}</td></tr>`).join("");
-  await transporter.sendMail({
+  const message = {
     from: `"Steve O Bizz Store" <${env.EMAIL_USER}>`,
     to: order.email,
     subject: `Order confirmed: ${order.order_id}`,
@@ -30,5 +31,18 @@ export const sendOrderReceipt = async (order, items) => {
       <p><strong>Delivery:</strong> ${escapeHtml(order.address)}, ${escapeHtml(order.state)}<br><strong>Phone:</strong> ${escapeHtml(order.phone)}</p>
       <p><a href="${escapeHtml(env.FRONTEND_URL)}/track">Track your order</a></p>
     </div>`,
-  });
+  };
+
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await transporter.sendMail(message);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await wait(attempt * 1000);
+    }
+  }
+
+  throw lastError;
 };
