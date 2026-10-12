@@ -12,7 +12,7 @@ export const initializeTransaction = async (email, amount, reference) => {
         email,
         amount: amount * 100, // Convert to Kobo
         reference,
-        callback_url: `${process.env.FRONTEND_URL}/order-success?reference=${encodeURIComponent(reference)}`
+        callback_url: `${String(process.env.FRONTEND_URL).replace(/\/$/, '')}/order-success?reference=${encodeURIComponent(reference)}`
       },
       {
         headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }

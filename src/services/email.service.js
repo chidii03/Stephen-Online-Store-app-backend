@@ -3,7 +3,7 @@ import { env } from "../config/env.js";
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
-  auth: { user: env.EMAIL_USER, pass: env.EMAIL_PASS },
+  auth: { user: env.EMAIL_USER, pass: String(env.EMAIL_PASS).replace(/\s+/g, "") },
 });
 
 const escapeHtml = (value) => String(value ?? "")
@@ -20,6 +20,7 @@ export const sendOrderReceipt = async (order, items) => {
     from: `"Steve O Bizz Store" <${env.EMAIL_USER}>`,
     to: order.email,
     subject: `Order confirmed: ${order.order_id}`,
+    text: `Thank you for your order, ${order.customer_name}. Your payment for order ${order.order_id} was verified successfully. Total paid: ${naira(order.total_amount)}.`,
     html: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto">
       <h2>Thank you for your order, ${escapeHtml(order.customer_name)}!</h2>
       <p>Your Paystack payment was verified successfully.</p>
